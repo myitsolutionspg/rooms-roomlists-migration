@@ -1,0 +1,9 @@
+# Ignore outputs and logs
+Rooms_Migration/2-Out/
+Rooms_Migration/3-Logs/
+Export CSV/
+
+# VS Code & misc
+.vscode/
+*.tmp
+~$*.docx
