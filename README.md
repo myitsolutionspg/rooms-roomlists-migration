@@ -97,7 +97,6 @@ $include = @(
   -CustomerName "Your Organisation Name" `
   -ProjectName "Exchange Online Migration" `
   -ReportVersion "v1.0" `
-  -GenerateWord
 ```
 This produces an HTML report (and optional DOCX) under Rooms_Migration\2-Out.
 
