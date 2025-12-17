@@ -111,12 +111,13 @@ try {
     # -------------------- Room Lists --------------------
     Write-Log "Exporting room lists..."
     $roomLists = Get-DistributionGroup -RecipientTypeDetails RoomList -ResultSize Unlimited |
-                 Select-Object `
-                    DisplayName,
-                    Alias,
-                    PrimarySmtpAddress,
-                    ManagedBy,
-                    Notes
+             Select-Object `
+                Identity,                                      # keep full identity
+                DisplayName,
+                Alias,
+                @{ Name = 'PrimarySmtpAddress'; Expression = { $_.PrimarySmtpAddress.ToString() } },
+                ManagedBy,
+                Notes
 
     $roomListsCsv = Join-Path $exportPath ("RoomLists_OnPrem_{0}.csv" -f $timestamp)
     $roomLists | Export-Csv -Path $roomListsCsv -NoTypeInformation -Encoding UTF8
@@ -124,8 +125,20 @@ try {
 
     # ---------------- Room List Membership --------------
     Write-Log "Exporting room list membership..."
+
     $listMembers = foreach ($list in $roomLists) {
-        $members = Get-DistributionGroupMember -Identity $list.PrimarySmtpAddress -ResultSize Unlimited
+    
+        $id = $list.Identity.ToString()
+        Write-Log ("  Getting members for room list: {0} [{1}]" -f $list.DisplayName, $id)
+    
+        try {
+            $members = Get-DistributionGroupMember -Identity $id -ResultSize Unlimited -ErrorAction Stop
+        }
+        catch {
+            Write-Log ("  WARN: Failed to get members for room list '{0}' ({1}): {2}" -f $list.DisplayName, $id, $_.Exception.Message)
+            continue
+        }
+    
         foreach ($m in $members) {
             [PSCustomObject]@{
                 RoomListDisplayName        = $list.DisplayName
@@ -137,7 +150,7 @@ try {
             }
         }
     }
-
+    
     $listMembersCsv = Join-Path $exportPath ("RoomListMembers_OnPrem_{0}.csv" -f $timestamp)
     $listMembers | Export-Csv -Path $listMembersCsv -NoTypeInformation -Encoding UTF8
     Write-Log ("Room list members exported to {0} (Rows = {1})" -f $listMembersCsv, ($listMembers.Count))
