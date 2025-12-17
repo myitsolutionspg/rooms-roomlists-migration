@@ -24,7 +24,6 @@ records and CABs.
 ## Folder Structure (high level)
 ```Text
 C:\DEV
-|   FolderStructure.txt
 |   
 \---Rooms-RoomLists
     +---1-Scripts
