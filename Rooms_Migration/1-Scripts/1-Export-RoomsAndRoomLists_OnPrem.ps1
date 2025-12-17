@@ -84,13 +84,14 @@ try {
 
     # ---------------- Calendar Processing ---------------
     Write-Log "Exporting CalendarProcessing settings..."
-    $calData = foreach ($room in $rooms) {
-        $cp = Get-CalendarProcessing -Identity $room.PrimarySmtpAddress
+        $calData = foreach ($room in $rooms) {
+        $id = $room.PrimarySmtpAddress.ToString()   # force to string
+        $cp = Get-CalendarProcessing -Identity $id
+    
         [PSCustomObject]@{
             DisplayName                    = $room.DisplayName
             PrimarySmtpAddress             = $room.PrimarySmtpAddress
             AutomateProcessing             = $cp.AutomateProcessing
-            AllowConflicts                 = $cp.AllowConflicts
             BookingWindowInDays            = $cp.BookingWindowInDays
             MaximumDurationInMinutes       = $cp.MaximumDurationInMinutes
             AllowRecurringMeetings         = $cp.AllowRecurringMeetings
