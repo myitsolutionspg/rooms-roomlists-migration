@@ -1,4 +1,4 @@
-# Rooms & Room Lists Migration (Exchange 2016 → Exchange Online)
+# Rooms & Room Lists Migration (Exchange 2016 to Exchange Online)
 
 PowerShell scripts and a runbook to help migrate **room mailboxes** and **room lists**
 from an on-premises **Exchange Server 2016** environment to **Exchange Online**.
