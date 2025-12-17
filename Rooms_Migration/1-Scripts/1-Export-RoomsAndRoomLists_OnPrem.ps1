@@ -1,183 +1,160 @@
 <#
 .SYNOPSIS
-Export rooms and room lists from on-prem Exchange 2016.
+Export on-premises rooms, calendar settings, room lists and membership.
 
-DEFAULT OUTPUT:
-  ..\..\Export CSV\
+Also ensures the standard folder structure exists and auto-generates a
+RoomsToMove.csv file (all rooms) under 4-Export.
+
+Folder layout (relative to this script):
+  1-Scripts   (this script lives here)
+  2-Out       (used by other scripts)
+  3-Logs      (log files)
+  4-Export    (raw CSV exports from on-prem, incl. RoomsToMove.csv)
+
+Run this script from the Exchange Management Shell on an Exchange 2016 server.
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $false)]
-    [string]$OutputPath
+    # Optional override for where CSV exports are written.
+    [string]$ExportPath
 )
 
-#region Paths + logging setup
-$scriptRoot         = Split-Path -Parent $MyInvocation.MyCommand.Path     # ...\Rooms_Migration\1-Scripts
-$roomsMigrationRoot = Split-Path -Parent $scriptRoot                      # ...\Rooms_Migration
-$projectRoot        = Split-Path -Parent $roomsMigrationRoot              # ...\ROOMS AND ROOM LIST MIGRATION
-$exportCsvRoot      = Join-Path $projectRoot 'Export CSV'
-$logRoot            = Join-Path $roomsMigrationRoot '3-Logs'
+$ErrorActionPreference = 'Stop'
 
-if (-not (Test-Path -Path $logRoot)) {
-    New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+# Resolve base paths from script location
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path   # ...\Rooms-RoomLists\1-Scripts
+$rootPath   = Split-Path $scriptRoot -Parent                    # ...\Rooms-RoomLists
+
+$paths = [ordered]@{
+    Scripts = $scriptRoot
+    Out     = Join-Path $rootPath '2-Out'
+    Logs    = Join-Path $rootPath '3-Logs'
+    Export  = if ($ExportPath) { $ExportPath } else { Join-Path $rootPath '4-Export' }
 }
 
-$scriptBaseName = [System.IO.Path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Name)
-$logFile        = Join-Path $logRoot ("{0}_{1}.log" -f $scriptBaseName, (Get-Date -Format 'yyyy-MM-dd'))
+# Ensure folders exist (except 1-Scripts which already exists)
+foreach ($key in $paths.Keys) {
+    if ($key -eq 'Scripts') { continue }
+    if (-not (Test-Path $paths[$key])) {
+        New-Item -ItemType Directory -Path $paths[$key] -Force | Out-Null
+    }
+}
+
+$exportPath = $paths.Export
+$logPath    = $paths.Logs
+
+$timestamp = Get-Date -Format 'yyyyMMdd_HHmm'
+$today     = Get-Date -Format 'yyyy-MM-dd'
+$logFile   = Join-Path $logPath ("1-Export-RoomsAndRoomLists_OnPrem_{0}.log" -f $today)
 
 function Write-Log {
-    [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [Parameter()][ValidateSet('INFO','WARN','ERROR')]
-        [string]$Level = 'INFO'
+        [Parameter(Mandatory)]
+        [string]$Message
     )
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $line      = '{0} [{1}] {2}' -f $timestamp, $Level, $Message
-    Add-Content -Path $logFile -Value $line
+    $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $line  = "[{0}] {1}" -f $stamp, $Message
     Write-Host $Message
-}
-#endregion
-
-#region Resolve default OutputPath
-if (-not $OutputPath) {
-    $OutputPath = $exportCsvRoot
-}
-#endregion
-
-#region Prep
-if (-not (Test-Path -Path $OutputPath)) {
-    New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
+    Add-Content -Path $logFile -Value $line
 }
 
-$timestamp           = Get-Date -Format "yyyyMMdd_HHmm"
-$roomsFile           = Join-Path $OutputPath "Rooms_OnPrem_$timestamp.csv"
-$roomsCalFile        = Join-Path $OutputPath "Rooms_Calendar_OnPrem_$timestamp.csv"
-$roomListsFile       = Join-Path $OutputPath "RoomLists_OnPrem_$timestamp.csv"
-$roomListMembersFile = Join-Path $OutputPath "RoomListMembers_OnPrem_$timestamp.csv"
+Write-Log "----- Rooms & Room Lists export started -----"
+Write-Log "ExportPath = $exportPath"
 
-Write-Host "Export path: $OutputPath" -ForegroundColor Cyan
-Write-Log  "----- Rooms & Room Lists export started -----"
-Write-Log  "OutputPath = $OutputPath"
-#endregion
+try {
+    # ----------------------- Rooms -----------------------
+    Write-Log "Exporting room mailboxes..."
+    $rooms = Get-Mailbox -RecipientTypeDetails RoomMailbox -ResultSize Unlimited |
+             Select-Object `
+                DisplayName,
+                Alias,
+                PrimarySmtpAddress,
+                WindowsEmailAddress,
+                OrganizationalUnit,
+                Office,
+                ResourceCapacity,
+                CustomAttribute1,
+                CustomAttribute2,
+                CustomAttribute3
 
-#region Export room mailboxes
-Write-Host "Exporting room mailboxes..." -ForegroundColor Yellow
+    $roomsCsv = Join-Path $exportPath ("Rooms_OnPrem_{0}.csv" -f $timestamp)
+    $rooms | Export-Csv -Path $roomsCsv -NoTypeInformation -Encoding UTF8
+    Write-Log ("Rooms exported to {0} (Count = {1})" -f $roomsCsv, ($rooms.Count))
 
-$rooms = Get-Mailbox -RecipientTypeDetails RoomMailbox -ResultSize Unlimited
-
-$rooms |
-    Select-Object `
-        DisplayName,
-        Alias,
-        PrimarySmtpAddress,
-        LegacyExchangeDN,
-        Database,
-        OrganizationalUnit,
-        RecipientTypeDetails,
-        ResourceCapacity,
-        Office,
-        CustomAttribute1,
-        CustomAttribute2,
-        CustomAttribute3 |
-    Export-Csv -Path $roomsFile -NoTypeInformation -Encoding UTF8
-
-Write-Host "  -> Rooms exported to $roomsFile" -ForegroundColor Green
-Write-Log  "Rooms exported to $roomsFile (Count = $($rooms.Count))"
-#endregion
-
-#region Export CalendarProcessing
-Write-Host "Exporting CalendarProcessing settings..." -ForegroundColor Yellow
-
-$calSettings = foreach ($rm in $rooms) {
-    try {
-        Get-CalendarProcessing -Identity $rm.Identity -ErrorAction Stop
-    }
-    catch {
-        Write-Warning "Failed to get CalendarProcessing for $($rm.Identity): $($_.Exception.Message)"
-        Write-Log "Failed to get CalendarProcessing for $($rm.Identity): $($_.Exception.Message)" -Level WARN
-    }
-}
-
-$calSettings |
-    Select-Object `
-        Identity,
-        AutomateProcessing,
-        BookingWindowInDays,
-        AllowConflicts,
-        AllowRecurringMeetings,
-        EnforceSchedulingHorizon,
-        MaximumDurationInMinutes,
-        DeleteSubject,
-        DeleteComments,
-        AddOrganizerToSubject,
-        RemovePrivateProperty,
-        ForwardRequestsToDelegates,
-        AllBookInPolicy,
-        AllRequestInPolicy,
-        AllRequestOutOfPolicy |
-    Export-Csv -Path $roomsCalFile -NoTypeInformation -Encoding UTF8
-
-Write-Host "  -> Calendar settings exported to $roomsCalFile" -ForegroundColor Green
-Write-Log  "CalendarProcessing exported to $roomsCalFile (Rooms with settings = $($calSettings.Count))"
-#endregion
-
-#region Export room lists
-Write-Host "Exporting room lists..." -ForegroundColor Yellow
-
-$roomLists = Get-DistributionGroup -RecipientTypeDetails RoomList -ResultSize Unlimited
-
-$roomLists |
-    Select-Object `
-        DisplayName,
-        Alias,
-        PrimarySmtpAddress,
-        LegacyExchangeDN,
-        ManagedBy,
-        HiddenFromAddressListsEnabled,
-        ModerationEnabled,
-        BypassModerationFromSendersOrMembers,
-        AcceptMessagesOnlyFromSendersOrMembers,
-        RejectMessagesFromSendersOrMembers,
-        RequireSenderAuthenticationEnabled,
-        CustomAttribute1,
-        CustomAttribute2,
-        CustomAttribute3 |
-    Export-Csv -Path $roomListsFile -NoTypeInformation -Encoding UTF8
-
-Write-Host "  -> Room lists exported to $roomListsFile" -ForegroundColor Green
-Write-Log  "Room lists exported to $roomListsFile (Count = $($roomLists.Count))"
-#endregion
-
-#region Export room list membership
-Write-Host "Exporting room list membership..." -ForegroundColor Yellow
-
-$roomListMembers = foreach ($rl in $roomLists) {
-    $members = Get-DistributionGroupMember -Identity $rl.Identity -ResultSize Unlimited
-    foreach ($m in $members) {
+    # ---------------- Calendar Processing ---------------
+    Write-Log "Exporting CalendarProcessing settings..."
+    $calData = foreach ($room in $rooms) {
+        $cp = Get-CalendarProcessing -Identity $room.PrimarySmtpAddress
         [PSCustomObject]@{
-            RoomList               = $rl.PrimarySmtpAddress
-            RoomListDisplayName    = $rl.DisplayName
-            MemberDisplayName      = $m.DisplayName
-            MemberPrimarySmtp      = $m.PrimarySmtpAddress
-            MemberAlias            = $m.Alias
-            MemberRecipientType    = $m.RecipientType
-            MemberRecipientDetails = $m.RecipientTypeDetails
+            DisplayName                    = $room.DisplayName
+            PrimarySmtpAddress             = $room.PrimarySmtpAddress
+            AutomateProcessing             = $cp.AutomateProcessing
+            AllowConflicts                 = $cp.AllowConflicts
+            BookingWindowInDays            = $cp.BookingWindowInDays
+            MaximumDurationInMinutes       = $cp.MaximumDurationInMinutes
+            AllowRecurringMeetings         = $cp.AllowRecurringMeetings
+            EnforceCapacity                = $cp.EnforceCapacity
+            AllowBookingWithoutOrganizer   = $cp.AllowBookingWithoutOrganizer
+            AllowOutOfOffice               = $cp.AllowOutOfOffice
+            AllBookInPolicy                = $cp.AllBookInPolicy
+            AllRequestInPolicy             = $cp.AllRequestInPolicy
+            AllRequestOutOfPolicy          = $cp.AllRequestOutOfPolicy
         }
     }
+
+    $calCsv = Join-Path $exportPath ("Rooms_Calendar_OnPrem_{0}.csv" -f $timestamp)
+    $calData | Export-Csv -Path $calCsv -NoTypeInformation -Encoding UTF8
+    Write-Log ("Calendar settings exported to {0} (Rooms with settings = {1})" -f $calCsv, ($calData.Count))
+
+    # -------------------- Room Lists --------------------
+    Write-Log "Exporting room lists..."
+    $roomLists = Get-DistributionGroup -RecipientTypeDetails RoomList -ResultSize Unlimited |
+                 Select-Object `
+                    DisplayName,
+                    Alias,
+                    PrimarySmtpAddress,
+                    ManagedBy,
+                    Notes
+
+    $roomListsCsv = Join-Path $exportPath ("RoomLists_OnPrem_{0}.csv" -f $timestamp)
+    $roomLists | Export-Csv -Path $roomListsCsv -NoTypeInformation -Encoding UTF8
+    Write-Log ("Room lists exported to {0} (Count = {1})" -f $roomListsCsv, ($roomLists.Count))
+
+    # ---------------- Room List Membership --------------
+    Write-Log "Exporting room list membership..."
+    $listMembers = foreach ($list in $roomLists) {
+        $members = Get-DistributionGroupMember -Identity $list.PrimarySmtpAddress -ResultSize Unlimited
+        foreach ($m in $members) {
+            [PSCustomObject]@{
+                RoomListDisplayName        = $list.DisplayName
+                RoomListPrimarySmtpAddress = $list.PrimarySmtpAddress
+                MemberDisplayName          = $m.DisplayName
+                MemberPrimarySmtpAddress   = $m.PrimarySmtpAddress
+                MemberRecipientType        = $m.RecipientType
+                MemberRecipientTypeDetails = $m.RecipientTypeDetails
+            }
+        }
+    }
+
+    $listMembersCsv = Join-Path $exportPath ("RoomListMembers_OnPrem_{0}.csv" -f $timestamp)
+    $listMembers | Export-Csv -Path $listMembersCsv -NoTypeInformation -Encoding UTF8
+    Write-Log ("Room list members exported to {0} (Rows = {1})" -f $listMembersCsv, ($listMembers.Count))
+
+    # ----------------- RoomsToMove.csv ------------------
+    Write-Log "Generating RoomsToMove.csv with all rooms..."
+    $roomsToMoveCsv = Join-Path $exportPath 'RoomsToMove.csv'
+
+    $rooms |
+      Select-Object @{Name = 'EmailAddress'; Expression = { $_.PrimarySmtpAddress }} |
+      Export-Csv -Path $roomsToMoveCsv -NoTypeInformation -Encoding UTF8
+
+    Write-Log ("RoomsToMove.csv generated at {0} (Count = {1})" -f $roomsToMoveCsv, ($rooms.Count))
+
+    Write-Log "Completed Rooms & Room Lists export."
+    Write-Log "----------------------------------------------------------"
 }
-
-$roomListMembers |
-    Export-Csv -Path $roomListMembersFile -NoTypeInformation -Encoding UTF8
-
-Write-Host "  -> Room list membership exported to $roomListMembersFile" -ForegroundColor Green
-Write-Log  "Room list members exported to $roomListMembersFile (Rows = $($roomListMembers.Count))"
-#endregion
-
-Write-Host "`nCompleted Rooms & Room Lists export." -ForegroundColor Cyan
-Write-Host "Files generated in: $OutputPath"
-
-Write-Log "Export completed successfully."
-Write-Log "-------------------------------------------"
+catch {
+    Write-Log ("ERROR: {0}" -f $_.Exception.Message)
+    throw
+}
