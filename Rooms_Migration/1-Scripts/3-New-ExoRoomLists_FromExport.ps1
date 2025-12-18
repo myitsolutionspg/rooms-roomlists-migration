@@ -1,208 +1,257 @@
 <#
 .SYNOPSIS
-Create EXO room lists from on-prem exports.
+Creates Exchange Online room lists (cloud) based on on-prem exports and adds members.
 
-DEFAULTS:
-  RoomListsCsv        = latest RoomLists_OnPrem_*.csv in ..\..\Export CSV
-  RoomListMembersCsv  = latest RoomListMembers_OnPrem_*.csv in ..\..\Export CSV
+.FOLDER STRUCTURE (expected)
+<ProjectRoot>\
+  1-Scripts\
+  2-Out\
+  3-Logs\
+  4-Export\   <-- on-prem CSV exports from Script 1
+
+.DEFAULT CSV SOURCES (latest files in 4-Export)
+  RoomLists_OnPrem_*.csv
+  RoomListMembers_OnPrem_*.csv
+
+.NOTES
+- Requires ExchangeOnlineManagement module.
+- By default creates "cloud copy" room lists (AliasSuffix + DisplayNameSuffix) to avoid collisions with DirSync room lists.
 #>
 
-[CmdletBinding(SupportsShouldProcess = $true)]
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $false)]
+    [Parameter(Mandatory=$false)]
     [string]$RoomListsCsv,
 
-    [Parameter(Mandatory = $false)]
+    [Parameter(Mandatory=$false)]
     [string]$RoomListMembersCsv,
 
-    [Parameter(Mandatory = $false)]
-    [string[]]$IncludeRoomLists,  # DisplayName OR PrimarySmtpAddress
+    [Parameter(Mandatory=$false)]
+    [string[]]$IncludeRoomLists,   # Match by DisplayName. If not provided, process all.
 
-    [Parameter(Mandatory = $false)]
-    [string]$AliasSuffix = "-EXO"
+    [Parameter(Mandatory=$false)]
+    [string]$AliasSuffix = "-EXO",
+
+    [Parameter(Mandatory=$false)]
+    [string]$DisplayNameSuffix = " (EXO)"
 )
 
-#region Paths + logging setup
-$scriptRoot         = Split-Path -Parent $MyInvocation.MyCommand.Path     # ...\Rooms_Migration\1-Scripts
-$roomsMigrationRoot = Split-Path -Parent $scriptRoot                      # ...\Rooms_Migration
-$projectRoot        = Split-Path -Parent $roomsMigrationRoot              # ...\ROOMS AND ROOM LIST MIGRATION
-$exportCsvRoot      = Join-Path $projectRoot 'Export CSV'
-$logRoot            = Join-Path $roomsMigrationRoot '3-Logs'
+# -------------------------
+# Paths (relative to 1-Scripts)
+# -------------------------
+$ScriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot  = Split-Path -Parent $ScriptRoot
 
-if (-not (Test-Path -Path $logRoot)) {
-    New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+$OutPath      = Join-Path $ProjectRoot '2-Out'
+$LogsPath     = Join-Path $ProjectRoot '3-Logs'
+$ExportPath   = Join-Path $ProjectRoot '4-Export'
+
+foreach ($p in @($OutPath, $LogsPath, $ExportPath)) {
+    if (-not (Test-Path $p)) { New-Item -ItemType Directory -Path $p | Out-Null }
 }
 
-$scriptBaseName = [System.IO.Path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Name)
-$logFile        = Join-Path $logRoot ("{0}_{1}.log" -f $scriptBaseName, (Get-Date -Format 'yyyy-MM-dd'))
+$LogFile = Join-Path $LogsPath ("3-New-ExoRoomLists_FromExport_{0}.log" -f (Get-Date -Format "yyyy-MM-dd"))
 
 function Write-Log {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [Parameter()][ValidateSet('INFO','WARN','ERROR')]
-        [string]$Level = 'INFO'
-    )
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $line      = '{0} [{1}] {2}' -f $timestamp, $Level, $Message
-    Add-Content -Path $logFile -Value $line
-    Write-Host $Message
-}
-#endregion
-
-#region Resolve default CSV paths
-if (-not $RoomListsCsv) {
-    $latest = Get-ChildItem -Path $exportCsvRoot -Filter 'RoomLists_OnPrem_*.csv' -ErrorAction SilentlyContinue |
-              Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($latest) { $RoomListsCsv = $latest.FullName }
-}
-if (-not $RoomListMembersCsv) {
-    $latest = Get-ChildItem -Path $exportCsvRoot -Filter 'RoomListMembers_OnPrem_*.csv' -ErrorAction SilentlyContinue |
-              Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($latest) { $RoomListMembersCsv = $latest.FullName }
-}
-#endregion
-
-Write-Log "----- EXO Room List creation started -----"
-Write-Log "RoomListsCsv = $RoomListsCsv"
-Write-Log "RoomListMembersCsv = $RoomListMembersCsv"
-Write-Log "AliasSuffix = $AliasSuffix"
-
-#region EXO module & connect
-if (-not (Get-Module -Name ExchangeOnlineManagement -ListAvailable)) {
-    Write-Log "ExchangeOnlineManagement module not found." -Level ERROR
-    throw "Install-Module ExchangeOnlineManagement -Scope CurrentUser"
+    param([Parameter(Mandatory=$true)][string]$Message)
+    $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
+    Add-Content -Path $LogFile -Value $line
+    Write-Host $line
 }
 
-if (-not (Get-Module -Name ExchangeOnlineManagement)) {
-    Import-Module ExchangeOnlineManagement -ErrorAction Stop
+function Get-LatestFile([string]$Folder, [string]$Filter) {
+    Get-ChildItem -Path $Folder -Filter $Filter -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
 }
 
+Write-Log "----- EXO Room List Creation script started -----"
+Write-Log ("ProjectRoot = {0}" -f $ProjectRoot)
+Write-Log ("ExportPath  = {0}" -f $ExportPath)
+
+# Resolve CSV locations
+if ([string]::IsNullOrWhiteSpace($RoomListsCsv)) {
+    $f = Get-LatestFile -Folder $ExportPath -Filter "RoomLists_OnPrem_*.csv"
+    if ($null -eq $f) { throw "RoomListsCsv not provided and no RoomLists_OnPrem_*.csv found in $ExportPath" }
+    $RoomListsCsv = $f.FullName
+}
+
+if ([string]::IsNullOrWhiteSpace($RoomListMembersCsv)) {
+    $f = Get-LatestFile -Folder $ExportPath -Filter "RoomListMembers_OnPrem_*.csv"
+    if ($null -eq $f) { throw "RoomListMembersCsv not provided and no RoomListMembers_OnPrem_*.csv found in $ExportPath" }
+    $RoomListMembersCsv = $f.FullName
+}
+
+Write-Log ("RoomListsCsv       = {0}" -f $RoomListsCsv)
+Write-Log ("RoomListMembersCsv = {0}" -f $RoomListMembersCsv)
+
+# Load CSVs
+$roomLists = Import-Csv -Path $RoomListsCsv
+$members   = Import-Csv -Path $RoomListMembersCsv
+
+if (-not $roomLists -or $roomLists.Count -eq 0) { throw "RoomListsCsv is empty: $RoomListsCsv" }
+
+# Validate expected columns
+foreach ($col in @('DisplayName','Alias','PrimarySmtpAddress')) {
+    if (-not ($roomLists[0].PSObject.Properties.Name -contains $col)) {
+        throw "RoomListsCsv missing required column '$col'. File: $RoomListsCsv"
+    }
+}
+
+foreach ($col in @('RoomList','MemberPrimarySmtpAddress')) {
+    if ($members.Count -gt 0 -and -not ($members[0].PSObject.Properties.Name -contains $col)) {
+        throw "RoomListMembersCsv missing required column '$col'. File: $RoomListMembersCsv"
+    }
+}
+
+Write-Log ("On-prem room lists loaded   = {0}" -f $roomLists.Count)
+Write-Log ("On-prem member rows loaded  = {0}" -f ($members.Count))
+
+# Connect to EXO
 try {
-    Get-ExoMailbox -ResultSize 1 -ErrorAction Stop | Out-Null
-    Write-Host "Already connected to Exchange Online." -ForegroundColor Cyan
+    if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
+        throw "ExchangeOnlineManagement module not found. Install-Module ExchangeOnlineManagement -Scope CurrentUser"
+    }
+
+    Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
+
+    Write-Log "Connecting to Exchange Online..."
+    Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop | Out-Null
+    Write-Log "Connected to Exchange Online."
 }
 catch {
-    Write-Host "Connecting to Exchange Online..." -ForegroundColor Yellow
-    Connect-ExchangeOnline
-}
-#endregion
-
-#region Load CSVs
-if (-not $RoomListsCsv -or -not (Test-Path -Path $RoomListsCsv)) {
-    Write-Log "RoomListsCsv not found. Expected RoomLists_OnPrem_*.csv in '$exportCsvRoot' or pass -RoomListsCsv." -Level ERROR
-    throw "RoomListsCsv not found."
-}
-if (-not $RoomListMembersCsv -or -not (Test-Path -Path $RoomListMembersCsv)) {
-    Write-Log "RoomListMembersCsv not found. Expected RoomListMembers_OnPrem_*.csv in '$exportCsvRoot' or pass -RoomListMembersCsv." -Level ERROR
-    throw "RoomListMembersCsv not found."
+    Write-Log ("ERROR: Failed to connect to EXO: {0}" -f $_.Exception.Message)
+    throw
 }
 
-$roomLists  = Import-Csv -Path $RoomListsCsv
-$membersCsv = Import-Csv -Path $RoomListMembersCsv
+# Filter lists
+if ($IncludeRoomLists -and $IncludeRoomLists.Count -gt 0) {
+    $set = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($n in $IncludeRoomLists) { [void]$set.Add($n) }
 
-if ($IncludeRoomLists) {
-    $roomLists = $roomLists | Where-Object {
-        $IncludeRoomLists -contains $_.DisplayName -or
-        $IncludeRoomLists -contains $_.PrimarySmtpAddress
+    $roomListsToProcess = $roomLists | Where-Object { $set.Contains($_.DisplayName) }
+    Write-Log ("Filtering enabled: processing {0} of {1} lists." -f $roomListsToProcess.Count, $roomLists.Count)
+} else {
+    $roomListsToProcess = $roomLists
+    Write-Log "No IncludeRoomLists provided: processing ALL room lists."
+}
+
+# Counters
+[int]$created = 0
+[int]$skippedExisting = 0
+[int]$skippedDirSync = 0
+[int]$membersAdded = 0
+[int]$membersFailed = 0
+
+foreach ($rl in $roomListsToProcess) {
+
+    $srcDisplay = $rl.DisplayName
+    $srcAlias   = $rl.Alias
+    $srcSmtp    = $rl.PrimarySmtpAddress
+
+    # Domain for primary SMTP (derive from source)
+    $domain = ($srcSmtp -split '@')[-1]
+
+    # Target naming (cloud copy)
+    $tgtAlias   = "{0}{1}" -f $srcAlias, $AliasSuffix
+    $tgtDisplay = "{0}{1}" -f $srcDisplay, $DisplayNameSuffix
+    $tgtSmtp    = "{0}@{1}" -f $tgtAlias, $domain
+
+    Write-Log ("--- Room List: {0} ({1}) -> Target: {2} ({3})" -f $srcDisplay, $srcSmtp, $tgtDisplay, $tgtSmtp)
+
+    # Check if target already exists
+    $existing = $null
+    try {
+        $existing = Get-DistributionGroup -Identity $tgtSmtp -ErrorAction SilentlyContinue
+    } catch { $existing = $null }
+
+    if ($null -ne $existing) {
+        $skippedExisting++
+
+        # If DirSync, do not attempt membership changes
+        $isDirSynced = $false
+        if ($existing.PSObject.Properties.Name -contains 'IsDirSynced') {
+            $isDirSynced = [bool]$existing.IsDirSynced
+        }
+
+        if ($isDirSynced) {
+            $skippedDirSync++
+            Write-Log ("INFO: Target group exists and is DirSync. Skipping membership changes. ({0})" -f $tgtSmtp)
+            continue
+        }
+
+        Write-Log ("INFO: Target group already exists (cloud). Will attempt to ensure membership. ({0})" -f $tgtSmtp)
+        $targetGroup = $existing
     }
-}
+    else {
+        # Create new RoomList group (cloud)
+        try {
+            $targetGroup = New-DistributionGroup -Name $tgtDisplay -Alias $tgtAlias -RoomList -ErrorAction Stop
 
-if (-not $roomLists) {
-    Write-Log "No room lists selected after filtering. Nothing to do." -Level WARN
-    return
-}
+            # Ensure primary SMTP is as expected
+            try {
+                Set-DistributionGroup -Identity $targetGroup.Identity -PrimarySmtpAddress $tgtSmtp -ErrorAction Stop | Out-Null
+            } catch {}
 
-Write-Host "Room lists selected for EXO creation:" -ForegroundColor Cyan
-$roomLists | Select-Object DisplayName,PrimarySmtpAddress,Alias | Format-Table
-
-Write-Log "Room lists selected for creation = $($roomLists.Count)"
-#endregion
-
-#region Create EXO room lists
-$listsCreated      = 0
-$listsSkipped      = 0
-$totalMembersAdded = 0
-
-foreach ($rl in $roomLists) {
-
-    $origAlias   = $rl.Alias
-    $origSmtp    = $rl.PrimarySmtpAddress
-    $displayName = $rl.DisplayName
-
-    if (-not $origAlias) {
-        $origAlias = ($displayName -replace '\s','') -replace '[^a-zA-Z0-9]',''
+            $created++
+            Write-Log ("Created room list: {0} ({1})" -f $tgtDisplay, $tgtSmtp)
+        }
+        catch {
+            Write-Log ("ERROR: Failed to create room list '{0}': {1}" -f $tgtDisplay, $_.Exception.Message)
+            continue
+        }
     }
 
-    $newAlias       = "$origAlias$AliasSuffix"
-    $domain         = ($origSmtp -split '@')[1]
-    $newPrimarySmtp = "$newAlias@$domain"
+    # Add members (based on source list membership)
+    $listMembers = $members | Where-Object {
+        $_.RoomList -and ($_.RoomList.Trim().ToLower() -eq $srcSmtp.Trim().ToLower())
+    }
 
-    $aliasExists = Get-Recipient -Filter "Alias -eq '$newAlias'" -ErrorAction SilentlyContinue
-    $smtpExists  = Get-Recipient -Filter "EmailAddresses -eq 'SMTP:$newPrimarySmtp'" -ErrorAction SilentlyContinue
-
-    if ($aliasExists -or $smtpExists) {
-        $listsSkipped++
-        Write-Warning "Skipping '$displayName' - alias or SMTP already exists (Alias=$newAlias, SMTP=$newPrimarySmtp)"
-        Write-Log "Skipping '$displayName' - alias or SMTP already exists (Alias=$newAlias, SMTP=$newPrimarySmtp)" -Level WARN
+    if (-not $listMembers -or $listMembers.Count -eq 0) {
+        Write-Log "No members found in export for this room list."
         continue
     }
 
-    $what = "Create EXO room list '$displayName' (Alias=$newAlias, PrimarySmtp=$newPrimarySmtp)"
+    foreach ($m in $listMembers) {
+        $memberSmtp = ($m.MemberPrimarySmtpAddress | ForEach-Object { $_.Trim() })
 
-    if ($PSCmdlet.ShouldProcess($displayName, $what)) {
+        if ([string]::IsNullOrWhiteSpace($memberSmtp)) { continue }
 
-        Write-Host $what -ForegroundColor Yellow
+        # Confirm member exists in EXO directory (recipient)
+        $r = $null
+        try { $r = Get-Recipient -Identity $memberSmtp -ErrorAction SilentlyContinue } catch { $r = $null }
 
-        $newGroup = New-DistributionGroup `
-            -Name $displayName `
-            -DisplayName $displayName `
-            -Alias $newAlias `
-            -PrimarySmtpAddress $newPrimarySmtp `
-            -RoomList
-
-        $listsCreated++
-        $membersAddedForList = 0
-
-        Write-Log "Created EXO room list '$displayName' (Alias=$newAlias, PrimarySmtp=$newPrimarySmtp)"
-
-        if ($rl.HiddenFromAddressListsEnabled -ne $null) {
-            Set-DistributionGroup $newGroup.Identity -HiddenFromAddressListsEnabled:$rl.HiddenFromAddressListsEnabled
-        }
-        if ($rl.RequireSenderAuthenticationEnabled -ne $null) {
-            Set-DistributionGroup $newGroup.Identity -RequireSenderAuthenticationEnabled:$rl.RequireSenderAuthenticationEnabled
+        if ($null -eq $r) {
+            $membersFailed++
+            Write-Log ("WARN: Member not found in EXO directory, skipping: {0}" -f $memberSmtp)
+            continue
         }
 
-        $rlMembers = $membersCsv | Where-Object { $_.RoomList -eq $origSmtp }
-
-        foreach ($m in $rlMembers) {
-            $memberSmtp = $m.MemberPrimarySmtp
-            if (-not $memberSmtp) {
-                Write-Warning "  Skipping member with no SMTP for room list $displayName"
-                Write-Log      "Skipping member with no SMTP for room list $displayName" -Level WARN
-                continue
-            }
-
-            $recipient = Get-Recipient -Identity $memberSmtp -ErrorAction SilentlyContinue
-            if ($recipient) {
-                Add-DistributionGroupMember -Identity $newGroup.Identity -Member $recipient.Identity
-                $membersAddedForList++
-                $totalMembersAdded++
-            }
-            else {
-                Write-Warning "  ! Could not resolve member $memberSmtp for room list $displayName"
-                Write-Log      "Could not resolve member $memberSmtp for room list $displayName" -Level WARN
+        # Add member (ignore if already member)
+        try {
+            Add-DistributionGroupMember -Identity $targetGroup.Identity -Member $memberSmtp -ErrorAction Stop | Out-Null
+            $membersAdded++
+            Write-Log ("Added member: {0}" -f $memberSmtp)
+        }
+        catch {
+            # If already a member, EXO usually throws; treat as info
+            $msg = $_.Exception.Message
+            if ($msg -match "is already a member" -or $msg -match "already a member") {
+                Write-Log ("INFO: Already a member: {0}" -f $memberSmtp)
+            } else {
+                $membersFailed++
+                Write-Log ("WARN: Failed to add member {0}: {1}" -f $memberSmtp, $msg)
             }
         }
-
-        Write-Log "Room list '$displayName' members added = $membersAddedForList"
     }
 }
-#endregion
 
-Write-Host "`nCompleted EXO room list creation." -ForegroundColor Cyan
-Write-Host "Verify with: Get-DistributionGroup -RecipientTypeDetails RoomList | ft DisplayName,PrimarySmtpAddress,Alias"
+Write-Log "----- Summary -----"
+Write-Log ("Room lists processed       = {0}" -f $roomListsToProcess.Count)
+Write-Log ("Room lists created         = {0}" -f $created)
+Write-Log ("Room lists existed (skip)  = {0}" -f $skippedExisting)
+Write-Log ("DirSync lists skipped      = {0}" -f $skippedDirSync)
+Write-Log ("Members added              = {0}" -f $membersAdded)
+Write-Log ("Members failed/skipped     = {0}" -f $membersFailed)
 
-Write-Log "EXO Room List creation completed. Created = $listsCreated; Skipped = $listsSkipped; MembersAddedTotal = $totalMembersAdded."
-Write-Log "-------------------------------------------------------------"
+Write-Log "----- Script completed -----"
