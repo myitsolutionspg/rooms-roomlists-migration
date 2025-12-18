@@ -9,7 +9,7 @@ records and CABs.
 
 ## Contents
 
-- `Rooms_Migration/1-Scripts`
+- `C:\Dev\Rooms-RoomLists\1-Scripts`
   - `1-Export-RoomsAndRoomLists_OnPrem.ps1`  
     Export rooms, calendar settings, room lists and membership from Exchange 2016 to CSV.
   - `2-New-RoomMigrationBatch_Exo.ps1`  
@@ -73,12 +73,12 @@ room3@contoso.com
 ```
 ### 3. Create a migration batch in Exchange Online
 ```powershell
-cd "C:\Dev\Rooms-RoomLists\1-Scripts\1-Scripts"
+cd "C:\Dev\Rooms-RoomLists\1-Scripts"
 
 .\2-New-RoomMigrationBatch_Exo.ps1 `
   -BatchName "Rooms-To-EXO-Wave1" `
   -SourceEndpoint "Hybrid-MigrationEndpointName" `
-  -TargetDeliveryDomain "contoso.com" `
+  -TargetDeliveryDomain "contoso.mail.onmicrosoft.com" `
   -AutoStart
 ```
 ### 4. Create room lists in EXO from the export
@@ -97,9 +97,10 @@ $include = @(
 .\4-New-RoomsAndRoomLists_MigrationReport.ps1 `
   -CustomerName "Your Organisation Name" `
   -ProjectName "Exchange Online Migration" `
-  -ReportVersion "v1.0" `
+  -ReportVersion "v1.0"
+
 ```
-This produces an HTML report (and optional DOCX) under Rooms_Migration\2-Out.
+This produces an HTML report under Rooms_Migration\2-Out.
 
 
 
