@@ -5,7 +5,9 @@ from an on-premises **Exchange Server 2016 or Exchange Server 2019** environment
 
 This repo is designed as a practical toolkit: export on-prem configuration, create
 migration batches, (optionally) build cloud room lists, and generate HTML reports for
-change records and CABs.
+change records.
+
+![Sample CA report](docs/ca-report.png)
 
 ## Supported versions
 

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Rooms & Room Lists Migration Report</title>
+<style>
+:root{
+  --bg:#f6f7fb;
+  --card:#ffffff;
+  --text:#0f172a;
+  --muted:#475569;
+  --border:#e5e7eb;
+  --primary:#0284c7;   /* sky-blue accent */
+  --accent:#2563eb;
+  --accent2:#0f172a;
+}
+body{margin:0;font-family:Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);}
+.wrap{max-width:1120px;margin:22px auto;padding:0 14px 92px;}
+
+.header{
+  background:linear-gradient(135deg,#38bdf8 0%,#0ea5e9 55%,#0284c7 100%);
+  color:#fff;padding:22px 18px 16px;border-bottom:1px solid rgba(255,255,255,.22);
+}
+.header-top{display:flex;gap:18px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;}
+.title{font-size:24px;font-weight:800;letter-spacing:.3px;margin:0;}
+.subtitle{margin:6px 0 0 0;font-size:14px;opacity:.95;line-height:1.4;}
+.stamp{font-size:14px;opacity:.92;text-align:right;line-height:1.4;}
+
+.nav{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;}
+.nav a{
+  color:#0b2a3a;text-decoration:none;font-size:14px;font-weight:800;
+  padding:6px 10px;border:1px solid rgba(27,30,32,0.10);border-radius:999px;background:rgba(255,255,255,.55);
+}
+.nav a:hover{background:rgba(255,255,255,.75);}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:14px 16px;
+  margin-top:16px;
+  box-shadow:0 6px 18px rgba(2,6,23,.06);
+}
+
+#summary.card{background:linear-gradient(180deg,#eff6ff 0%,#ffffff 55%);border-left:6px solid #38bdf8;}
+#inventory.card{background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 55%);border-left:6px solid #22c55e;}
+#memberships.card{background:linear-gradient(180deg,#faf5ff 0%,#ffffff 55%);border-left:6px solid #a855f7;}
+#mismatches.card{background:linear-gradient(180deg,#ffffff 0%,#ffffff 55%);border-left:6px solid #fb923c;}
+
+.card h2{margin:0 0 12px;font-size:16px;display:flex;align-items:center;gap:10px;}
+.card h2:before{
+  content:"";display:inline-block;width:10px;height:10px;border-radius:999px;background:var(--primary);
+  box-shadow:0 0 0 4px rgba(14,165,233,.18);
+}
+
+h2{font-size:16px;margin:0 0 10px 0;}
+h3{font-size:14px;margin:18px 0 10px 0;}
+p{margin:8px 0;color:var(--muted);font-size:13px;line-height:1.5;}
+
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+@media(max-width:980px){.grid{grid-template-columns:repeat(2,1fr);} }
+
+.kpi{border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:#fbfdff;}
+.kpi .label{font-size:13px;color:var(--muted);}
+.kpi .value{font-size:22px;font-weight:800;margin-top:2px;color:#0f172a;}
+
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;}
+th,td{border:1px solid var(--border);padding:8px 10px;vertical-align:top;}
+th{background:#f1f5f9;text-align:left;font-weight:800;color:#0f172a;}
+
+.small{font-size:13px;color:var(--muted);}
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,Monaco,monospace;}
+
+.pill{
+  display:inline-block;font-size:12px;padding:2px 10px;border-radius:999px;
+  border:1px solid rgba(15,23,42,.10);background:rgba(81, 205, 247, 0.26);color:#02430d;font-weight:800;
+}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:980px){.two-col{grid-template-columns:1fr;}}
+
+.footer-fixed{
+  position:fixed;left:0;right:0;bottom:0;
+  background:rgba(226, 232, 240, 0.92);
+  backdrop-filter:saturate(180%) blur(10px);
+  border-top:1px solid var(--border);
+  box-shadow:0 -6px 18px rgba(2,6,23,.10);
+  padding:10px 14px;z-index:50;
+}
+.footer-inner{
+  max-width:1120px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;
+  gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted);
+}
+.footer-inner a{color:#0f172a;text-decoration:none;font-weight:900;}
+.footer-inner a:hover{text-decoration:underline;}
+.footer-sep{opacity:.8;}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="header-top">
+      <div>
+        <div class="title">Rooms &amp; Room Lists Migration Report</div>
+        <div class="subtitle">
+          <span class="pill">Customer: Example Organisation</span>
+          &nbsp; <span class="pill">Project: Exchange Online Migration</span>
+          &nbsp; <span class="pill">Version: v1.1 (Sample)</span>
+        </div>
+      </div>
+
+      <div class="stamp">
+        <div><b>Generated:</b> 2025-12-20 15:13</div>
+        <div class="small">Source: On-prem Exchange exports + Exchange Online live queries</div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <a href="#summary">Summary</a>
+      <a href="#inventory">Inventory</a>
+      <a href="#memberships">Room list memberships</a>
+      <a href="#mismatches">Mismatches</a>
+    </div>
+  </div>
+
+  <div class="card" id="summary">
+    <h2>1. Summary</h2>
+    <div class="grid">
+      <div class="kpi"><div class="label">On-prem rooms</div><div class="value">23</div></div>
+      <div class="kpi"><div class="label">EXO rooms</div><div class="value">12</div></div>
+      <div class="kpi"><div class="label">On-prem room lists</div><div class="value">5</div></div>
+      <div class="kpi"><div class="label">EXO room lists</div><div class="value">5</div></div>
+      <div class="kpi"><div class="label">Membership mismatches</div><div class="value">0</div></div>
+    </div>
+    <p class="small">
+      Tip: If EXO rooms show <b>0</b> but on-prem rooms exist, confirm the room mailboxes have been migrated
+      (rooms are mailboxes, not distribution groups).
+    </p>
+  </div>
+
+  <div class="card" id="inventory">
+    <h2>2. Inventory</h2>
+
+    <h3>2.1 On-prem rooms</h3>
+    <p class="small">Source: <span class="mono">Rooms_OnPrem_YYYYMMDD_HHMM.csv</span></p>
+    <table>
+      <thead><tr><th>Display Name</th><th>Primary SMTP</th><th>Alias</th></tr></thead>
+      <tbody>
+        <tr><td>Head Office – Meeting Room 01</td><td class="mono">room01@example.com</td><td class="mono">room01</td></tr>
+        <tr><td>Head Office – Meeting Room 02</td><td class="mono">room02@example.com</td><td class="mono">room02</td></tr>
+        <tr><td>Branch A – Training Room</td><td class="mono">training.branchA@example.com</td><td class="mono">training.branchA</td></tr>
+      </tbody>
+    </table>
+
+    <h3>2.2 Exchange Online rooms</h3>
+    <table>
+      <thead><tr><th>Display Name</th><th>Primary SMTP</th><th>Alias</th></tr></thead>
+      <tbody>
+        <tr><td>Head Office – Meeting Room 01</td><td class="mono">room01@example.com</td><td class="mono">room01</td></tr>
+        <tr><td>Head Office – Meeting Room 02</td><td class="mono">room02@example.com</td><td class="mono">room02</td></tr>
+        <tr><td>Branch A – Training Room</td><td class="mono">training.branchA@example.com</td><td class="mono">training.branchA</td></tr>
+      </tbody>
+    </table>
+
+    <h3>2.3 Room lists</h3>
+    <p class="small">On-prem source: <span class="mono">RoomLists_OnPrem_YYYYMMDD_HHMM.csv</span> &nbsp;&nbsp;|&nbsp;&nbsp; EXO source: live query</p>
+    <div class="two-col">
+      <div>
+        <div class="small"><b>On-prem room lists</b></div>
+        <table>
+          <thead><tr><th>Display Name</th><th>Primary SMTP</th></tr></thead>
+          <tbody>
+            <tr><td>Head Office – Meeting Rooms</td><td class="mono">roomlist.ho@example.com</td></tr>
+            <tr><td>Regional Office – Meeting Rooms</td><td class="mono">roomlist.regional@example.com</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="small"><b>Exchange Online room lists</b></div>
+        <table>
+          <thead><tr><th>Display Name</th><th>Primary SMTP</th></tr></thead>
+          <tbody>
+            <tr><td>Head Office – Meeting Rooms</td><td class="mono">roomlist.ho@example.com</td></tr>
+            <tr><td>Regional Office – Meeting Rooms</td><td class="mono">roomlist.regional@example.com</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="memberships">
+    <h2>3. Room list memberships (rooms per room list)</h2>
+    <p>This section lists the rooms under each room list, showing <b>Display Name</b> and <b>SMTP</b> (On-prem export vs Exchange Online).</p>
+
+    <h3>Head Office – Meeting Rooms <span class="pill mono">roomlist.ho@example.com</span></h3>
+    <div class="two-col">
+      <div>
+        <div class="small"><b>On-prem members</b> &nbsp;<span class="pill">2</span></div>
+        <table>
+          <thead><tr><th>Display Name</th><th>SMTP</th><th>Type</th></tr></thead>
+          <tbody>
+            <tr><td>Head Office – Meeting Room 01</td><td class="mono">room01@example.com</td><td>RoomMailbox</td></tr>
+            <tr><td>Head Office – Meeting Room 02</td><td class="mono">room02@example.com</td><td>RoomMailbox</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="small"><b>EXO members</b> &nbsp;<span class="pill">2</span></div>
+        <table>
+          <thead><tr><th>Display Name</th><th>SMTP</th><th>Type</th></tr></thead>
+          <tbody>
+            <tr><td>Head Office – Meeting Room 01</td><td class="mono">room01@example.com</td><td>RoomMailbox</td></tr>
+            <tr><td>Head Office – Meeting Room 02</td><td class="mono">room02@example.com</td><td>RoomMailbox</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3>Regional Office – Meeting Rooms <span class="pill mono">roomlist.regional@example.com</span></h3>
+    <div class="two-col">
+      <div>
+        <div class="small"><b>On-prem members</b> &nbsp;<span class="pill">1</span></div>
+        <table>
+          <thead><tr><th>Display Name</th><th>SMTP</th><th>Type</th></tr></thead>
+          <tbody>
+            <tr><td>Branch A – Training Room</td><td class="mono">training.branchA@example.com</td><td>RoomMailbox</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="small"><b>EXO members</b> &nbsp;<span class="pill">1</span></div>
+        <table>
+          <thead><tr><th>Display Name</th><th>SMTP</th><th>Type</th></tr></thead>
+          <tbody>
+            <tr><td>Branch A – Training Room</td><td class="mono">training.branchA@example.com</td><td>RoomMailbox</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="mismatches">
+    <h2>4. Membership mismatches (On-prem vs EXO)</h2>
+    <p><span class="pill">PASS</span> No membership mismatches detected.</p>
+  </div>
+
+  <div class="footer-fixed">
+    <div class="footer-inner">
+      <div>Generated <span class="mono">2025-12-20 15:13</span></div>
+      <div>
+        <span class="footer-sep">My IT Solutions (PNG) Ltd</span>
+        &middot; By Melky Warinak
+        &middot; <a href="https://myitsolutionspg.com" target="_blank" rel="noopener">myitsolutionspg.com</a>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
