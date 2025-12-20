@@ -1,17 +1,26 @@
-# Rooms & Room Lists Migration (Exchange 2016 to Exchange Online)
+# Rooms & Room Lists Migration (Exchange 2016/2019 to Exchange Online)
 
 PowerShell scripts to help migrate **room mailboxes** and **room lists**
-from an on-premises **Exchange Server 2016** environment to **Exchange Online**.
+from an on-premises **Exchange Server 2016 or Exchange Server 2019** environment to **Exchange Online**.
 
 This repo is designed as a practical toolkit: export on-prem configuration, create
 migration batches, (optionally) build cloud room lists, and generate HTML reports for
 change records and CABs.
 
+## Supported versions
+
+- **On-prem:** Exchange Server **2016** or **2019**
+- **Cloud:** Exchange Online
+- **Migration method:** Hybrid **remote move** (Migration Batches)
+
+> Note: This assumes a working Hybrid configuration and a valid Migration Endpoint (SourceEndpoint).
+> Keep Exchange servers on supported/current updates in line with Microsoft guidance.
+
 ## Contents
 
 - `Rooms-RoomLists/1-Scripts`
   - `1-Export-RoomsAndRoomLists_OnPrem.ps1`  
-    Export rooms, calendar settings, room lists and membership from Exchange 2016 to CSV.
+    Export rooms, calendar settings, room lists and membership from Exchange **2016/2019** to CSV.
   - `2-New-RoomMigrationBatch_Exo.ps1`  
     Create a remote-move migration batch in EXO using `RoomsToMove.csv`.
   - `3-New-ExoRoomLists_FromExport.ps1`  
@@ -22,7 +31,8 @@ change records and CABs.
 ## Prerequisites
 
 - **On-prem (Step 1)**
-  - Run from **Exchange Management Shell** on an **Exchange 2016** server (or a management host with Exchange tools).
+  - Run from **Exchange Management Shell (EMS)** on an **Exchange 2016 or 2019** server  
+    (or a management host with the corresponding Exchange management tools).
   - Account must have sufficient permissions to read:
     - room mailboxes and calendar processing settings
     - room list distribution groups and membership
@@ -58,7 +68,7 @@ Rooms-RoomLists
 ## Usage example
 
 ### 1. Export rooms and room lists (on-prem)
-Run from the Exchange Management Shell on an Exchange 2016 server:
+Run from the Exchange Management Shell on an Exchange 2016 or 2019 server:
 
 ```powershell
 cd ".\Rooms-RoomLists\1-Scripts" `
