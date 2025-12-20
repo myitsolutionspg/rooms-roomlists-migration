@@ -289,7 +289,7 @@ $html += ("<title>{0} - Rooms & Room Lists Migration Report</title>" -f (Html-En
 
 # --- Styles ---
 $html += '<style>'
-$html += ':root{--bg:#f6f7fb;--card:#ffffff;--text:#0f172a;--muted:#ffffff;--border:#e5e7eb;--primary:#0019db;--accent:#2563eb;--accent2:#0f172a;}'
+$html += ':root{--bg:#f6f7fb;--card:#ffffff;--text:#0f172a;--muted:#000000;--border:#e5e7eb;--primary:#0019db;--accent:#2563eb;--accent2:#0f172a;}'
 $html += 'body{margin:0;font-family:Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);}'
 $html += '.wrap{max-width:1120px;margin:22px auto;padding:0 14px 92px;}'
 $html += '.header{background:linear-gradient(135deg,#38bdf8 0%,#0ea5e9 55%,#0284c7 100%);color:#fff;padding:22px 18px 16px;border-bottom:1px solid rgba(255,255,255,.22);}'
