@@ -1,6 +1,7 @@
 # Ignore outputs and logs
-Rooms_Migration/2-Out/
-Rooms_Migration/3-Logs/
+Rooms-RoomLists/2-Out/
+Rooms-RoomLists/3-Logs/
+Rooms-RoomLists/4-Export/
 Export CSV/
 
 # VS Code & misc
