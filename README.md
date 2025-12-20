@@ -52,20 +52,30 @@ change records.
 - **Hybrid requirement (for remote move)**
   - A working **Hybrid configuration** and a valid **Migration Endpoint** (the `-SourceEndpoint` value).
 
-## Folder Structure (high level)
+## Folder Structure
 
 ```text
-Rooms-RoomLists
-├─ 1-Scripts
-│  ├─ 1-Export-RoomsAndRoomLists_OnPrem.ps1
-│  ├─ 2-New-RoomMigrationBatch_Exo.ps1
-│  ├─ 3-New-ExoRoomLists_FromExport.ps1
-│  └─ 4-New-RoomsAndRoomLists_MigrationReport.ps1
-├─ 2-Out          # Reports (generated)
-├─ 3-Logs         # Daily script logs (generated)
-└─ 4-Export       # On-prem exports + RoomsToMove.csv (generated)
-
+rooms-roomlists-migration
+├─ .gitignore
+├─ README.md
+├─ Rooms-RoomLists
+│  └─ 1-Scripts
+│     ├─ 1-Export-RoomsAndRoomLists_OnPrem.ps1
+│     ├─ 2-New-RoomMigrationBatch_Exo.ps1
+│     ├─ 3-New-ExoRoomLists_FromExport.ps1
+│     └─ 4-New-RoomsAndRoomLists_MigrationReport.ps1
+├─ docs
+│  └─ rooms-roomlists.png
+└─ sample-output
+   └─ Rooms_RoomLists_Migration_Report_SAMPLE.html
 ```
+Note: The folders 2-Out, 3-Logs, and 4-Export are not stored in the repo because they are auto-created at runtime when you run the scripts.
+
+- 2-Out – generated outputs (e.g., HTML reports)
+- 3-Logs – timestamped execution logs
+- 4-Export – on-prem export CSVs plus the generated RoomsToMove.csv
+
+These folders will appear automatically under your local Rooms-RoomLists working directory after running the scripts.
 
 ## Usage example
 
