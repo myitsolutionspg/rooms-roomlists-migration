@@ -7,7 +7,7 @@ This repo is designed as a practical toolkit: export on-prem configuration, crea
 migration batches, (optionally) build cloud room lists, and generate HTML reports for
 change records.
 
-![Sample CA report](docs/ca-report.png)
+![Rooms & Room Lists screenshot](docs/rooms-roomlists.png)
 
 ## Supported versions
 
