@@ -123,7 +123,7 @@ $include = @(
 .\4-New-RoomsAndRoomLists_MigrationReport.ps1 `
   -CustomerName "Your Organisation Name" `
   -ProjectName "Exchange Online Migration" `
-  -ReportVersion "v1.0"
+  -ReportVersion "v1.1"
 
 ```
 This produces an HTML report under Rooms-RoomLists/2-Out.
